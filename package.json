@@ -1,0 +1,22 @@
+{
+  "name": "sails-canvas-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "历史帆船主帆修补：帆布与破损补片候选的联合排版工作台",
+  "scripts": {
+    "start": "node src/server/server.js",
+    "test": "node --test",
+    "build": "node scripts/build.js",
+    "verify": "node src/server/verify.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

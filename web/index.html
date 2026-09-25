@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>帆装师排版工作台 · 主帆修补</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>⚓ 主帆修补 · 帆布联合排版工作台</h1>
+    <div class="toolbar">
+      <button id="btn-plan" class="primary" type="button">🧭 排版（联合选优）</button>
+      <button id="btn-save" type="button">保存草稿</button>
+      <button id="btn-reset" type="button">恢复示例草稿</button>
+      <span id="status" class="status"></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="errors" class="errors hidden"></section>
+
+    <div class="columns">
+      <div class="col-left">
+        <section class="card">
+          <div class="card-head">
+            <h2>可用帆布（2–3 张）</h2>
+            <button id="btn-add-canvas" type="button" class="mini">＋ 增加帆布</button>
+          </div>
+          <div id="canvases"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>破损补片（3–5 块，每块 2–4 个批准候选）</h2>
+            <button id="btn-add-patch" type="button" class="mini">＋ 增加补片</button>
+          </div>
+          <div id="patches"></div>
+        </section>
+      </div>
+
+      <div class="col-right">
+        <section id="stale-banner" class="banner hidden">
+          ⚠ 草稿自上次排版后已修改，以下为<strong>已失效的旧结论</strong>，请重新点击「排版」。
+        </section>
+        <section id="result" class="card">
+          <h2>排版结论</h2>
+          <p class="hint">录入帆布、补片与候选后点击「排版」。系统会在本机联合选择每块补片恰一个候选，
+            依次按 ① 使用帆布张数最少 ② 各已用帆布剩余面积最大值最小 ③ 候选序号字典序最小 选优，
+            避免局部挑选最省料位置后使其他补片无处可裁。</p>
+          <div id="result-body"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
