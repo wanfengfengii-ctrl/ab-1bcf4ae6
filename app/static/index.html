@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>帆船主帆修补 · 排版工作台</title>
+<style>
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f4f1ea; color: #222; }
+  header { background: #1d3557; color: #fff; padding: 12px 20px; }
+  header h1 { margin: 0; font-size: 18px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  h2 small { color: #777; font-weight: normal; }
+  h3 { font-size: 14px; margin: 14px 0 6px; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  input, select { padding: 5px 6px; border: 1px solid #bbb; border-radius: 4px; }
+  input[type=number] { width: 76px; }
+  input[name=name] { width: 120px; }
+  button { padding: 6px 14px; border: 0; border-radius: 4px; background: #457b9d; color: #fff; cursor: pointer; }
+  button.danger { background: #c0392b; padding: 2px 8px; }
+  button.big { background: #2d6a4f; font-size: 15px; padding: 8px 22px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
+  th { background: #f0ebe0; }
+  .banner { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; display: none; }
+  .banner.show { display: block; }
+  .banner.warn { background: #fff3cd; border: 1px solid #e0c97f; }
+  .banner.err { background: #f8d7da; border: 1px solid #e2a4ab; }
+  .banner.ok { background: #d8f3dc; border: 1px solid #95d5b2; }
+  .cloths-svg { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+  .cloth-box { text-align: center; font-size: 12px; color: #555; }
+  svg.cloth { border: 1px solid #ccc; background: #fff; }
+  .muted { color: #888; font-size: 12px; }
+  #layout-msg { margin-left: 10px; color: #c0392b; }
+</style>
+</head>
+<body>
+<header><h1>⛵ 帆船主帆修补 · 排版工作台</h1></header>
+<main>
+  <div id="stale" class="banner warn">草稿已修改，旧排版结论已失效，请重新点击「排版」。</div>
+
+  <section>
+    <h2>帆布 <small>2–3 张；宽高、边缘禁裁宽度为整数；经纬方向指经向沿宽或沿高</small></h2>
+    <form id="cloth-form">
+      <input name="name" placeholder="名称" required>
+      <label>宽 <input type="number" name="width" min="1" required></label>
+      <label>高 <input type="number" name="height" min="1" required></label>
+      <label>经纬方向
+        <select name="grain"><option value="0">经向沿宽</option><option value="1">经向沿高</option></select>
+      </label>
+      <label>边缘禁裁 <input type="number" name="margin" min="0" value="0" required></label>
+      <button>添加帆布</button>
+    </form>
+    <table id="cloth-table"></table>
+  </section>
+
+  <section>
+    <h2>补片 <small>3–5 块；每块需给出纤维方向要求</small></h2>
+    <form id="patch-form">
+      <input name="name" placeholder="名称" required>
+      <label>纤维方向
+        <select name="fiber"><option value="0">经向沿补片宽</option><option value="1">经向沿补片高</option></select>
+      </label>
+      <button>添加补片</button>
+    </form>
+    <table id="patch-table"></table>
+  </section>
+
+  <section>
+    <h2>裁切候选 <small>每块补片 2–4 个；整数坐标；宽×高为布上占地，旋转 90° 使纤维方向互换</small></h2>
+    <form id="cand-form">
+      <label>补片 <select name="patch_id" required></select></label>
+      <label>帆布 <select name="cloth_id" required></select></label>
+      <label>左上 x <input type="number" name="x" min="0" value="0" required></label>
+      <label>左上 y <input type="number" name="y" min="0" value="0" required></label>
+      <label>宽 <input type="number" name="w" min="1" required></label>
+      <label>高 <input type="number" name="h" min="1" required></label>
+      <label>旋转
+        <select name="rotation"><option value="0">0°</option><option value="90">90°</option></select>
+      </label>
+      <button>添加候选</button>
+    </form>
+    <table id="cand-table"></table>
+  </section>
+
+  <section>
+    <h2>联合排版 <small>每块补片恰选一个候选：用布张数最少 → 已用布剩余面积最大值最小 → 候选序号最小</small></h2>
+    <button id="layout-btn" class="big">排版</button>
+    <span id="layout-msg"></span>
+    <div id="result"></div>
+  </section>
+</main>
+<script>
+let S = null;
+
+const $ = (id) => document.getElementById(id);
+
+async function api(path, method, payload) {
+  const opts = { method: method || 'GET' };
+  if (payload !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(payload);
+  }
+  const res = await fetch(path, opts);
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* 忽略非 JSON 响应 */ }
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+function formData(form) {
+  const o = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    o[el.name] = (el.type === 'number' || el.tagName === 'SELECT') ? Number(el.value) : el.value;
+  }
+  return o;
+}
+
+function delBtn(fn) {
+  const b = document.createElement('button');
+  b.textContent = '删除';
+  b.className = 'danger';
+  b.onclick = async () => {
+    try { await fn(); await refresh(); } catch (e) { alert(e.message); }
+  };
+  return b;
+}
+
+function makeTable(headers, rows) {
+  const t = document.createElement('table');
+  const hr = document.createElement('tr');
+  for (const h of headers) { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); }
+  t.appendChild(hr);
+  if (!rows.length) {
+    const r = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = headers.length; td.className = 'muted'; td.textContent = '（暂无）';
+    r.appendChild(td); t.appendChild(r);
+    return t;
+  }
+  for (const row of rows) {
+    const r = document.createElement('tr');
+    for (const cell of row) {
+      const td = document.createElement('td');
+      if (cell instanceof Node) td.appendChild(cell); else td.textContent = cell;
+      r.appendChild(td);
+    }
+    t.appendChild(r);
+  }
+  return t;
+}
+
+function fillTable(id, headers, rows) {
+  const t = makeTable(headers, rows);
+  t.id = id;
+  $(id).replaceWith(t);
+}
+
+const grainText = (g) => g ? '经向沿高' : '经向沿宽';
+const fiberText = (f) => f ? '经向沿补片高' : '经向沿补片宽';
+const clothName = (id) => { const c = S.cloths.find(x => x.id === id); return c ? c.name : '#' + id; };
+const candCount = (pid) => S.candidates.filter(c => c.patch_id === pid).length;
+
+function renderCloths() {
+  const rows = S.cloths.map((c, i) => [
+    i + 1, c.name, c.width, c.height, grainText(c.grain), c.margin,
+    `${c.width - 2 * c.margin}×${c.height - 2 * c.margin}`,
+    delBtn(() => api('/api/cloths/' + c.id, 'DELETE')),
+  ]);
+  fillTable('cloth-table', ['#', '名称', '宽', '高', '经纬方向', '边缘禁裁', '可裁区域', '操作'], rows);
+}
+
+function renderPatches() {
+  const rows = S.patches.map((p, i) => [
+    i + 1, p.name, fiberText(p.fiber), `${candCount(p.id)}/${S.limits.candidates_per_patch}`,
+    delBtn(() => api('/api/patches/' + p.id, 'DELETE')),
+  ]);
+  fillTable('patch-table', ['#', '名称', '纤维方向要求', '候选数', '操作'], rows);
+}
+
+function renderCandidates() {
+  const seen = {};
+  const rows = S.candidates.map(c => {
+    seen[c.patch_id] = (seen[c.patch_id] || 0) + 1;
+    const pIdx = S.patches.findIndex(p => p.id === c.patch_id);
+    const p = S.patches[pIdx];
+    return [
+      `补片#${pIdx + 1} ${p ? p.name : '?'}`, `候选${seen[c.patch_id]}`, clothName(c.cloth_id),
+      `(${c.x}, ${c.y})`, `${c.w}×${c.h}`, `${c.rotation}°`,
+      delBtn(() => api('/api/candidates/' + c.id, 'DELETE')),
+    ];
+  });
+  fillTable('cand-table', ['补片', '候选序号', '帆布', '左上坐标', '宽×高', '旋转', '操作'], rows);
+}
+
+function fillSelects() {
+  const ps = document.querySelector('#cand-form select[name=patch_id]');
+  const cs = document.querySelector('#cand-form select[name=cloth_id]');
+  ps.replaceChildren(...S.patches.map((p, i) =>
+    new Option(`补片#${i + 1} ${p.name}（${candCount(p.id)}/${S.limits.candidates_per_patch}）`, p.id)));
+  cs.replaceChildren(...S.cloths.map(c => new Option(`${c.name} ${c.width}×${c.height}`, c.id)));
+}
+
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function clothSvg(c) {
+  const scale = Math.min(1, 300 / Math.max(c.width, c.height));
+  const w = c.width * scale, h = c.height * scale;
+  const svg = svgEl('svg', { width: w, height: h, class: 'cloth' });
+  svgEl('rect', { x: 0, y: 0, width: w, height: h, fill: '#fde8e8', stroke: '#333' }, svg);
+  const m = c.margin * scale;
+  svgEl('rect', { x: m, y: m, width: w - 2 * m, height: h - 2 * m,
+                  fill: '#fff', stroke: '#888', 'stroke-dasharray': '4 2' }, svg);
+  for (const g of c.ghosts) {
+    const r = svgEl('rect', { x: g.x * scale, y: g.y * scale, width: g.w * scale, height: g.h * scale,
+                              fill: 'none', stroke: '#999', 'stroke-dasharray': '3 3' }, svg);
+    const t = svgEl('title', {}, r);
+    t.textContent = `未采用：补片#${g.patch_index} ${g.patch_name} 候选${g.candidate_index}`;
+  }
+  for (const p of c.pieces) {
+    svgEl('rect', { x: p.x * scale, y: p.y * scale, width: p.w * scale, height: p.h * scale,
+                    fill: '#b7e4c7', stroke: '#2d6a4f', 'stroke-width': 1.5 }, svg);
+    const t = svgEl('text', { x: (p.x + p.w / 2) * scale, y: (p.y + p.h / 2) * scale,
+                              'text-anchor': 'middle', 'dominant-baseline': 'middle',
+                              'font-size': 10, fill: '#1b4332' }, svg);
+    t.textContent = `#${p.patch_index}`;
+  }
+  return svg;
+}
+
+function renderResult(res) {
+  const box = $('result');
+  box.innerHTML = '';
+  if (res.status === 'no_solution') {
+    const d = document.createElement('div');
+    d.className = 'banner err show';
+    d.textContent = '无解：' + res.message;
+    box.appendChild(d);
+    if (res.candidate_reasons) {
+      box.appendChild(makeTable(['候选序号', '帆布', '拒绝原因'],
+        res.candidate_reasons.map(r => [`候选${r.index}`, clothName(r.cloth_id), r.reasons.join('；')])));
+    }
+    if (res.conflicts && res.conflicts.length) {
+      box.appendChild(makeTable(['冲突方 A', '冲突方 B', '所在帆布'],
+        res.conflicts.map(c => [
+          `补片#${c.patch_a_index} ${c.patch_a_name} · 候选${c.candidate_a_index}`,
+          `补片#${c.patch_b_index} ${c.patch_b_name} · 候选${c.candidate_b_index}`,
+          clothName(c.cloth_id)])));
+    }
+    return;
+  }
+  const sum = document.createElement('div');
+  sum.className = 'banner ok show';
+  sum.textContent = `最优方案：使用帆布 ${res.objective.cloths_used} 张；` +
+    `已用帆布剩余面积最大值 ${res.objective.max_remaining}；` +
+    `候选序号序列 [${res.objective.sequence.join(', ')}]`;
+  box.appendChild(sum);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'cloths-svg';
+  for (const c of res.cloths) {
+    const b = document.createElement('div');
+    b.className = 'cloth-box';
+    b.appendChild(clothSvg(c));
+    const cap = document.createElement('div');
+    cap.textContent = `${c.name} ${c.width}×${c.height} 禁裁${c.margin}｜` +
+      (c.used ? `已裁 ${c.used_area}，剩余 ${c.remaining}` : '未使用');
+    b.appendChild(cap);
+    wrap.appendChild(b);
+  }
+  box.appendChild(wrap);
+
+  const h1 = document.createElement('h3');
+  h1.textContent = '采用明细';
+  box.appendChild(h1);
+  box.appendChild(makeTable(
+    ['补片', '采用候选', '帆布', '左上坐标', '宽×高', '旋转', '结论'],
+    res.decisions.map(d => [
+      `补片#${d.patch_index} ${d.patch_name}`, `候选${d.candidate_index}`, clothName(d.cloth_id),
+      `(${d.x}, ${d.y})`, `${d.w}×${d.h}`, `${d.rotation}°`, '已采用'])));
+
+  const h2 = document.createElement('h3');
+  h2.textContent = '排除明细';
+  box.appendChild(h2);
+  box.appendChild(makeTable(
+    ['补片', '候选', '帆布', '坐标 / 尺寸 / 旋转', '排除理由'],
+    res.exclusions.map(e => [
+      `补片#${e.patch_index} ${e.patch_name}`, `候选${e.candidate_index}`, clothName(e.cloth_id),
+      `(${e.x}, ${e.y}) ${e.w}×${e.h} ${e.rotation}°`, e.reason])));
+}
+
+async function refresh() {
+  S = await api('/api/state');
+  $('stale').classList.toggle('show', S.layout_stale);
+  renderCloths();
+  renderPatches();
+  renderCandidates();
+  fillSelects();
+  if (S.layout) renderResult(S.layout);
+  else $('result').innerHTML = '';
+}
+
+$('cloth-form').onsubmit = async (e) => {
+  e.preventDefault();
+  try { await api('/api/cloths', 'POST', formData(e.target)); e.target.reset(); await refresh(); }
+  catch (err) { alert(err.message); }
+};
+
+$('patch-form').onsubmit = async (e) => {
+  e.preventDefault();
+  try { await api('/api/patches', 'POST', formData(e.target)); e.target.reset(); await refresh(); }
+  catch (err) { alert(err.message); }
+};
+
+$('cand-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const data = formData(e.target);
+  try { await api(`/api/patches/${data.patch_id}/candidates`, 'POST', data); await refresh(); }
+  catch (err) { alert(err.message); }
+};
+
+$('layout-btn').onclick = async () => {
+  $('layout-msg').textContent = '';
+  try {
+    const res = await api('/api/layout', 'POST', {});
+    $('stale').classList.remove('show');
+    renderResult(res);
+  } catch (e) {
+    $('layout-msg').textContent = e.message;
+  }
+};
+
+refresh().catch(e => alert(e.message));
+</script>
+</body>
+</html>
